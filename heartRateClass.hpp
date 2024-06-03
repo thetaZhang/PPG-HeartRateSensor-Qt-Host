@@ -35,6 +35,9 @@ public:
             m_heartRateEightSecsWindow[i] = 0;          // initial window data
         }
         m_heartRate = 70;                               // set heartRate initial value
+        HRV=0;
+        breathRate=0;
+        is_finger_on=0;
     }
 
     void pushRawData(const std::vector<double>& newDataVector){
@@ -51,7 +54,7 @@ public:
         //     sum+=m_heartRateEightSecsWindow[i];
         //     wave_data.push_back(sum/(i+1));
         // }
-        wave_data=sliding(forward_difference(m_heartRateEightSecsWindow),10);
+        wave_data=slide_T(m_heartRateEightSecsWindow,120);
         //qDebug() <<"wave_data" << wave_data.size();
         struct point peaks,valleys;
         find_peaks_adaptive_threshold(wave_data,&peaks,0.2,m_sampleRate);
@@ -66,19 +69,29 @@ public:
     }
 
     double calculateHeartRateByMethodFilter(){
+        bool is_finger_on_last=is_finger_on;
+        double hr_peak,hr_fft;
+        double test_mean=0.0;
+        int touch_start=0;
         if (mean(m_heartRateEightSecsWindow)<=2000) {
             is_finger_on=0;
         }
         else {
             is_finger_on=1;
         }
-        double hr_peak,hr_fft;
-        double test_mean=0.0;
-        int touch_start=0;
+        if ((accumulate(m_heartRateEightSecsWindow.end()-m_sampleRate,m_heartRateEightSecsWindow.end(),0)/m_sampleRate) <=2000) {
+            is_finger_on=0;
+        }
+
         for (int i=1;i<m_heartRateEightSecsWindow.size();i++) {
             test_mean=accumulate(m_heartRateEightSecsWindow.begin(),m_heartRateEightSecsWindow.begin()+i,0)/(i);
             if (test_mean >1500.0) {touch_start=i-1;break;}
+            if (i==m_heartRateEightSecsWindow.size()-1) {
+                is_finger_on=0;
+            }
         }
+
+
         qDebug() << "touch" << touch_start;
         static vector<double> data_reg(8*m_sampleRate,0); // 暂存上一次数据用于率波以消除滤波稳定时间
         //qDebug() << "regsize" << data_reg.size();
@@ -90,6 +103,7 @@ public:
         filter_out_data_base=filter_a(b_fil_lowpass,a_fil_lowpass,filter_in_data);
 
         vector<double> wave_in_data=vector<double>(filter_out_data.begin()+data_reg.size(),filter_out_data.end());
+        if (is_finger_on==1) {
         wave_in_data.assign(wave_in_data.begin()+touch_start,wave_in_data.end());
         vector<double> wave_in_data_base=vector<double>(filter_out_data_base.begin()+data_reg.size(),filter_out_data_base.end());
         std_formal(wave_in_data);
@@ -99,6 +113,11 @@ public:
         breathRate=my_fft(wave_in_data_base,m_sampleRate,0.1,0.35);
 
         wave_data=wave_in_data;
+        if (touch_start>5*m_sampleRate) {
+            is_finger_on=0;
+        }
+        else   {
+             is_finger_on=1;
         vector<double> cal_data=wave_data;
         struct point peaks,valleys;
         find_peaks_adaptive_threshold(cal_data,&peaks,0.6,m_sampleRate);
@@ -111,15 +130,37 @@ public:
         hr_peak = cal_hr(m_heartRate,peaks.position,m_sampleRate);
         hr_fft=my_fft(cal_data,m_sampleRate,0.6,4.0);
         qDebug()  << "hr_peak:" << hr_peak << "hr_fft" << hr_fft;
-        if ((hr_fft>=40 && hr_fft <=200)&& abs(hr_peak-hr_fft)<=5) {
-            m_heartRate=(hr_peak+hr_fft*2.0)/3.0;
-            HRV=cal_HRV_SDNN(peaks.position,m_sampleRate);
+
+        if (is_finger_on_last==0) {
+            if ((hr_fft>=40 && hr_fft <=200)&& abs(hr_peak-hr_fft)<=5) {
+                m_heartRate=(hr_peak+hr_fft*2.0)/3.0;
+                HRV=cal_HRV_SDNN(peaks.position,m_sampleRate);
+
+            }
+            else if ((hr_fft>=50 && hr_fft <=120)){     // 为了通过强行取的条件。。
+                 m_heartRate=hr_fft;
+            }
+            else {
+                 is_finger_on=0;
+            }
         }
-        else if (abs(hr_fft-m_heartRate)<=10){
-            m_heartRate=hr_fft;
+        else {
+            if ((hr_fft>=40 && hr_fft <=200)&& abs(hr_peak-hr_fft)<=5) {
+                m_heartRate=(hr_peak+hr_fft*2.0)/3.0;
+                HRV=cal_HRV_SDNN(peaks.position,m_sampleRate);
+            }
+            else if (abs(hr_fft-m_heartRate)<=10){
+                m_heartRate=hr_fft;
+            }
+            else if (abs(hr_peak-m_heartRate)<=5){
+                m_heartRate=hr_peak;
+            }
         }
-        else if (abs(hr_peak-m_heartRate)<=5){
-            m_heartRate=hr_peak;
+        }
+        }
+
+        if (m_heartRate>200 || m_heartRate<40) {
+            is_finger_on=0;
         }
         data_reg.assign(data_reg.begin()+m_sampleRate,data_reg.end());
         data_reg.insert(data_reg.end(),m_heartRateEightSecsWindow.begin(),m_heartRateEightSecsWindow.begin()+m_sampleRate);

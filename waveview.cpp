@@ -1,6 +1,7 @@
 #include "waveview.h"
 #include <iostream>
 #include <QtCharts/QScatterSeries>
+
 /*
  *初始化
 */

@@ -32,7 +32,7 @@ void HeartRateSensor::pushNewData(QByteArray newData){
             tempVector[i] = static_cast<double>(pd_data[i]);
         }
         m_heartRateClass->pushRawData(tempVector);
-        double heartRate = m_heartRateClass->calculateHeartRateByMethodFilter();
+        double heartRate = m_heartRateClass->calculateHeartRateByMethodDiff();
         vector<double> wave_display_data = m_heartRateClass->wave_data;
         vector<int> wave_display_peaks = m_heartRateClass->wave_peaks;
         bool isFingerOn=m_heartRateClass->is_finger_on;

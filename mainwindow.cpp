@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <cmath>
 
 
 #define HEARTRATE_SERV_UUID         "0000180d-0000-1000-8000-00805f9b34fb"
@@ -57,6 +58,12 @@ MainWindow::MainWindow(QWidget *parent)
 
 
     ui->horizontalLayout_3->addLayout(m_waveLayout);
+
+
+    QFont ft;
+    ft.setPointSize(28);
+    ui->label_5->setFont(ft);
+    ui->label_5->setStyleSheet("color:red;");
 
     // 蓝牙扫描器线程
     m_BLEScannerThread = new QThread();     // 新建子线程
@@ -213,6 +220,7 @@ void MainWindow::onHeartRateSignalCb(double heartRate,double RespiratoryRate,dou
 {
     if (isFingerOn){
         ui->label->setText("HR: " + QString::number(heartRate)+"bpm");
+        ui->label_5->setText( QString::number(round(heartRate)));
         hr_waveView->pushdata(heartRate);
 
         ui->label_3->setText("RR: " + QString::number(RespiratoryRate)+"bpm");
@@ -222,18 +230,16 @@ void MainWindow::onHeartRateSignalCb(double heartRate,double RespiratoryRate,dou
         ui->label->setText("请放好放稳您的手指");
         ui->label_3->setText("RR: -");
         ui->label_4->setText("HRV:-");
+        ui->label_5->setText("-");
     }
 }
 
 void MainWindow::isBLEConnected(int count) {
-    static double percent=0;
     if (count==18){
     ui->label_2->setText("已连接");
         count=0;
-        percent=0;
     }
     else {
-        percent+=10;
         ui->label_2->setText("已找到目标设备，连接中......");
     }
 }
