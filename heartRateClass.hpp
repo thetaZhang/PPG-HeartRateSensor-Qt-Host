@@ -32,7 +32,7 @@ public:
         int windowSize = 8 * sampleRate;
         m_heartRateEightSecsWindow.resize(windowSize);  // resize window size
         for(int i = 0; i < windowSize; ++i){
-            m_heartRateEightSecsWindow[i] = 0;          // initial window data
+            m_heartRateEightSecsWindow[i] = 600;          // initial window data
         }
         m_heartRate = 70;                               // set heartRate initial value
         HRV=0;
@@ -58,21 +58,27 @@ public:
         //qDebug() <<"wave_data" << wave_data.size();
         struct point peaks,valleys;
         find_peaks_adaptive_threshold(wave_data,&peaks,0.2,m_sampleRate);
-        find_valley_adaptive_threshold(wave_data,&valleys,0.2,m_sampleRate);
-        qDebug() << "peaksize" << peaks.position.size() << "valleysize" << valleys.position.size();
+        //find_valley_adaptive_threshold(wave_data,&valleys,0.2,m_sampleRate);
+        //qDebug() << "peaksize" << peaks.position.size() << "valleysize" << valleys.position.size();
         //tidy_valley(&peaks,&valleys,wave_data);
         m_heartRate = cal_hr(m_heartRate,valleys.position,m_sampleRate);                                                                   // 计算心率
         return m_heartRate;
-
-
-
     }
 
     double calculateHeartRateByMethodFilter(){
         bool is_finger_on_last=is_finger_on;
         double hr_peak,hr_fft;
         double test_mean=0.0;
+        double test_mean_last=0.0;
         int touch_start=0;
+        static int peak_count=0,fft_count=0;
+        static double hr_peak_last=70,hr_fft_last=70;
+        static double hr_last=70;
+        static double hr_cal_last=70;
+        // static double hr_peak_last=70,hr_fft_last=70;
+        // static int peak_count=0,fft_count=0;
+
+
         if (mean(m_heartRateEightSecsWindow)<=2000) {
             is_finger_on=0;
         }
@@ -83,12 +89,29 @@ public:
             is_finger_on=0;
         }
 
-        for (int i=1;i<m_heartRateEightSecsWindow.size();i++) {
-            test_mean=accumulate(m_heartRateEightSecsWindow.begin(),m_heartRateEightSecsWindow.begin()+i,0)/(i);
-            if (test_mean >1500.0) {touch_start=i-1;break;}
-            if (i==m_heartRateEightSecsWindow.size()-1) {
-                is_finger_on=0;
+        // for (int i=50;i<m_heartRateEightSecsWindow.size();i++) {
+        //     test_mean=accumulate(m_heartRateEightSecsWindow.begin()+i-10,m_heartRateEightSecsWindow.begin()+i,0)/(10);
+        //     if (test_mean >4000.0 ) {
+        //         touch_start=i-1;break;
+        //     }
+        //     if (i==m_heartRateEightSecsWindow.size()-1) {
+        //         is_finger_on=0;
+        //     }
+        // }
+
+        if (accumulate(m_heartRateEightSecsWindow.begin(),m_heartRateEightSecsWindow.begin()+m_sampleRate/2,0.0)/(m_sampleRate/2) <= 2000) {
+
+            for (int i=7; i>=0;i--) {
+                test_mean=accumulate(m_heartRateEightSecsWindow.begin()+i*m_sampleRate,m_heartRateEightSecsWindow.begin()+(i+1)*m_sampleRate,0)/(m_sampleRate);
+                if (test_mean<=3500 || (i<7 && abs(test_mean-test_mean_last)>=4000)) {
+                    touch_start=(i+1)*m_sampleRate;break;
+                }
+                test_mean_last=test_mean;
             }
+
+        }
+        else {
+            touch_start=0;
         }
 
 
@@ -96,68 +119,128 @@ public:
         static vector<double> data_reg(8*m_sampleRate,0); // 暂存上一次数据用于率波以消除滤波稳定时间
         //qDebug() << "regsize" << data_reg.size();
         vector<double> filter_in_data,filter_out_data,filter_out_data_base;
-        filter_in_data.insert(filter_in_data.end(),data_reg.begin(),data_reg.end());
-        filter_in_data.insert(filter_in_data.end(),m_heartRateEightSecsWindow.begin(),m_heartRateEightSecsWindow.end());
-        //qDebug() << "fil_insize" << filter_in_data.size();
-        filter_out_data=filter_a(b_fil_bandpass,a_fil_bandpass,filter_in_data);
-        filter_out_data_base=filter_a(b_fil_lowpass,a_fil_lowpass,filter_in_data);
-
-        vector<double> wave_in_data=vector<double>(filter_out_data.begin()+data_reg.size(),filter_out_data.end());
-        if (is_finger_on==1) {
-        wave_in_data.assign(wave_in_data.begin()+touch_start,wave_in_data.end());
-        vector<double> wave_in_data_base=vector<double>(filter_out_data_base.begin()+data_reg.size(),filter_out_data_base.end());
-        std_formal(wave_in_data);
-        std_formal(wave_in_data_base);
 
 
-        breathRate=my_fft(wave_in_data_base,m_sampleRate,0.1,0.35);
-
-        wave_data=wave_in_data;
-        if (touch_start>5*m_sampleRate) {
+        if ( is_finger_on==1){
+        if (touch_start>7*m_sampleRate) {
             is_finger_on=0;
         }
         else   {
              is_finger_on=1;
+
+            filter_in_data.insert(filter_in_data.end(),data_reg.begin(),data_reg.end());
+            filter_in_data.insert(filter_in_data.end(),m_heartRateEightSecsWindow.begin(),m_heartRateEightSecsWindow.end());
+            //qDebug() << "fil_insize" << filter_in_data.size();
+            filter_out_data=filter_a(b_fil_bandpass,a_fil_bandpass,filter_in_data);
+            filter_out_data_base=filter_a(b_fil_lowpass,a_fil_lowpass,filter_in_data);
+
+            vector<double> wave_in_data=vector<double>(filter_out_data.begin()+data_reg.size(),filter_out_data.end());
+            wave_in_data.assign(wave_in_data.begin()+touch_start,wave_in_data.end());
+            vector<double> wave_in_data_base=vector<double>(filter_out_data_base.begin()+data_reg.size(),filter_out_data_base.end());
+            std_formal(wave_in_data);
+            std_formal(wave_in_data_base);
+
+
+            breathRate=my_fft(wave_in_data_base,m_sampleRate,0.1,0.35);
+
+            wave_data=wave_in_data;
+
         vector<double> cal_data=wave_data;
         struct point peaks,valleys;
-        find_peaks_adaptive_threshold(cal_data,&peaks,0.6,m_sampleRate);
+        find_peaks_adaptive_threshold(cal_data,&peaks,0.7,m_sampleRate);
         //find_valley_adaptive_threshold(wave_data,&valleys,0.1,m_sampleRate);
         //qDebug() << peaks.position.size();
         //tidy_peak(&peaks,&valleys,m_heartRateEightSecsWindow);
-
-
-
-        hr_peak = cal_hr(m_heartRate,peaks.position,m_sampleRate);
-        hr_fft=my_fft(cal_data,m_sampleRate,0.6,4.0);
-        qDebug()  << "hr_peak:" << hr_peak << "hr_fft" << hr_fft;
-
-        if (is_finger_on_last==0) {
-            if ((hr_fft>=40 && hr_fft <=200)&& abs(hr_peak-hr_fft)<=5) {
-                m_heartRate=(hr_peak+hr_fft*2.0)/3.0;
-                HRV=cal_HRV_SDNN(peaks.position,m_sampleRate);
-
-            }
-            else if ((hr_fft>=50 && hr_fft <=120)){     // 为了通过强行取的条件。。
-                 m_heartRate=hr_fft;
-            }
-            else {
-                 is_finger_on=0;
-            }
+        bool is_peak_no_empty;
+        if (peaks.position.size()<=1) {
+            is_peak_no_empty=0;
         }
         else {
-            if ((hr_fft>=40 && hr_fft <=200)&& abs(hr_peak-hr_fft)<=5) {
+        hr_peak = cal_hr(m_heartRate,peaks.position,m_sampleRate);
+        is_peak_no_empty=1;
+        }
+        hr_fft=my_fft(cal_data,m_sampleRate,0.6,4.0);
+
+
+
+        qDebug()  << "hr_peak:" << hr_peak;
+
+
+        qDebug() << "hr_fft" << hr_fft;
+
+        if (is_finger_on_last==0 ) {
+            if ((hr_fft>=40 && hr_fft <=200)&& abs(hr_peak-hr_fft)<=5 && is_peak_no_empty==1) {
                 m_heartRate=(hr_peak+hr_fft*2.0)/3.0;
                 HRV=cal_HRV_SDNN(peaks.position,m_sampleRate);
+                fft_count=0;
+                peak_count=0;
+
             }
-            else if (abs(hr_fft-m_heartRate)<=10){
+            else if ((hr_fft>=50 && hr_fft <=120 ))
+                {
+                if ((fft_count!=0 && abs(hr_fft-hr_fft_last)<8.0)|| (peak_count!=0 &&abs(hr_fft-hr_peak_last)<5.0)) {
+                    m_heartRate=hr_fft;
+
+                    fft_count=0;
+                }
+                else {
+                    fft_count++;
+                    is_finger_on=0;
+                }
+                }
+            else if (hr_peak>=55 && hr_peak <=95)
+                {
+                if ((peak_count!=0 && is_peak_no_empty==1 && abs(hr_peak-hr_peak_last)<5.0) ||( fft_count!=0  && abs(hr_peak-hr_fft_last)<8.0)) {
+                    m_heartRate=hr_peak;
+
+                    peak_count=0;
+                }
+                else {
+                    peak_count++;
+                    is_finger_on=0;
+                }
+                 }
+
+            else {
+                    fft_count=0;
+                    peak_count=0;
+                is_finger_on=0;
+            }
+        }
+
+        else {
+            peak_count=0;
+            fft_count=0;
+            if ((hr_fft>=40 && hr_fft <=200)&& abs(hr_peak-hr_fft)<=5 &&  is_peak_no_empty==1) {
+                m_heartRate=(hr_peak+hr_fft*2.0)/3.0;
+
+                HRV=cal_HRV_SDNN(peaks.position,m_sampleRate);
+            }
+            else if (abs(hr_fft-m_heartRate)<=15){
                 m_heartRate=hr_fft;
+
             }
-            else if (abs(hr_peak-m_heartRate)<=5){
+            else if (abs(hr_peak-m_heartRate)<=5 && is_peak_no_empty==1){
                 m_heartRate=hr_peak;
+
+            }
+
+            if (abs(m_heartRate-hr_last)>25.0) {
+
+                m_heartRate=hr_last;
             }
         }
+        if (is_peak_no_empty==1) {
+            hr_peak_last=hr_peak;
         }
+        hr_fft_last=hr_fft;
+        hr_last=m_heartRate;
+
         }
+
+
+        }
+
 
         if (m_heartRate>200 || m_heartRate<40) {
             is_finger_on=0;
@@ -350,7 +433,7 @@ private:
 
     //自适应阈值
     void find_peaks_adaptive_threshold(const vector<double>& data,struct point* peaks, double beta,int f) { //入参增加阈值系数
-        double threshold = *max_element(data.begin(),data.end()) * 0.3 ;
+        double threshold = *max_element(data.begin(),data.end()) * 0.5;
         for (int i = 0; i < data.size() - 2; ++i) {
             if (data[i + 1] > threshold && data[i + 1] > data[i] && data[i + 1] >= data[i + 2] ) {//增加阈值判断条件，其他不变
                 if (!peaks->position.empty())
@@ -370,6 +453,7 @@ private:
                 continue;
             }
         }
+        qDebug() << "peak size" << peaks->position.size();
     }
 
     //自适应阈值
@@ -394,6 +478,7 @@ private:
                 continue;
             }
         }
+        qDebug() <<"valley size" << valley->position.size();
     }
 
 
@@ -751,40 +836,40 @@ vector<complex<double>> convertToComplex(const vector<double>& signal){
 
 
 
-        // 新的峰值位置
-        peak_index=0;
-        valley_index=0;
+        // // 新的峰值位置
+        // peak_index=0;
+        // valley_index=0;
 
-        if (peak->position.front()<valley->position.front()) {
-            peak->position[0]=std::distance(sig.begin(),max_element(sig.begin(),sig.begin()+valley->position[0]));
-            peak_index=1;
-            while (peak_index<peak->position.size()-1 && valley_index<peak->position.size()-1) {
-                peak->position[peak_index]=std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley_index],sig.begin()+valley->position[valley_index+1]));
-                peak_index++;
-                valley_index++;
-            }
-            if (peak->position.back()>valley->position.back()) {
-                peak->position[peak->position.size()-1]=std::distance(sig.begin(),max_element(sig.begin()+valley->position.back(),sig.end()));
-            }
-            else {
-                peak->position[peak->position.size()-1]=
-                    std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley->position.size()-2],sig.begin()+valley->position[valley->position.size()-1]));
-            }
-        }
-        else {
-            while (peak_index<peak->position.size()-1 && valley_index<peak->position.size()-1) {
-                peak->position[peak_index]=std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley_index],sig.begin()+valley->position[valley_index+1]));
-                peak_index++;
-                valley_index++;
-            }
-            if (peak->position.back()>valley->position.back()) {
-                peak->position[peak->position.size()-1]=std::distance(sig.begin(),max_element(sig.begin()+valley->position.back(),sig.end()));
-            }
-            else {
-                peak->position[peak->position.size()-1]=
-                    std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley->position.size()-2],sig.begin()+valley->position[valley->position.size()-1]));
-            }
-        }
+        // if (peak->position.front()<valley->position.front()) {
+        //     peak->position[0]=std::distance(sig.begin(),max_element(sig.begin(),sig.begin()+valley->position[0]));
+        //     peak_index=1;
+        //     while (peak_index<peak->position.size()-1 && valley_index<peak->position.size()-1) {
+        //         peak->position[peak_index]=std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley_index],sig.begin()+valley->position[valley_index+1]));
+        //         peak_index++;
+        //         valley_index++;
+        //     }
+        //     if (peak->position.back()>valley->position.back()) {
+        //         peak->position[peak->position.size()-1]=std::distance(sig.begin(),max_element(sig.begin()+valley->position.back(),sig.end()));
+        //     }
+        //     else {
+        //         peak->position[peak->position.size()-1]=
+        //             std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley->position.size()-2],sig.begin()+valley->position[valley->position.size()-1]));
+        //     }
+        // }
+        // else {
+        //     while (peak_index<peak->position.size()-1 && valley_index<peak->position.size()-1) {
+        //         peak->position[peak_index]=std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley_index],sig.begin()+valley->position[valley_index+1]));
+        //         peak_index++;
+        //         valley_index++;
+        //     }
+        //     if (peak->position.back()>valley->position.back()) {
+        //         peak->position[peak->position.size()-1]=std::distance(sig.begin(),max_element(sig.begin()+valley->position.back(),sig.end()));
+        //     }
+        //     else {
+        //         peak->position[peak->position.size()-1]=
+        //             std::distance(sig.begin(),max_element(sig.begin()+valley->position[valley->position.size()-2],sig.begin()+valley->position[valley->position.size()-1]));
+        //     }
+        // }
 
 
 

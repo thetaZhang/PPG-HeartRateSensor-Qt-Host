@@ -38,9 +38,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_waveView->resizeDisplayDataSize(960);
     //ui->horizontalLayout_3->addWidget(m_waveView);
 
-    m_waveView1 = new WaveView(this);
-    m_waveView1->setMinimumWidth(800);
-    m_waveView1->resizeDisplayDataSize(960);
+    // m_waveView1 = new WaveView(this);
+    // m_waveView1->setMinimumWidth(800);
+    // m_waveView1->resizeDisplayDataSize(960);
     //ui->horizontalLayout_3->addWidget(m_waveView1);
 
     hr_waveView= new WaveView(this);
@@ -53,7 +53,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_waveLayout->addWidget(m_waveView);
 
-    m_waveLayout->addWidget(m_waveView1);
+    //m_waveLayout->addWidget(m_waveView1);
     m_waveLayout->addWidget(hr_waveView);
 
 
@@ -211,7 +211,12 @@ void MainWindow::on_newHeartRateRawDataSignal1(std::vector<double> heartRateRawD
 
 
 void MainWindow::on_newHeartRateSignal(double heartRate,bool isFingerOn){
-    ui->dialog->append("HR: " + QString::number(heartRate));
+    // if (isFingerOn) {
+    // ui->dialog->append("HR: " + QString::number(heartRate));
+    // }
+    // else {
+    //     ui->dialog->append("HR: -" );
+    // }
 }
 
 
@@ -224,7 +229,12 @@ void MainWindow::onHeartRateSignalCb(double heartRate,double RespiratoryRate,dou
         hr_waveView->pushdata(heartRate);
 
         ui->label_3->setText("RR: " + QString::number(RespiratoryRate)+"bpm");
+        if (!isnan(HRV)) {
         ui->label_4->setText("HRV: " + QString::number(HRV)+"ms");
+        }
+        else {
+            ui->label_4->setText("HRV:-");
+        }
     }
     else {
         ui->label->setText("请放好放稳您的手指");
